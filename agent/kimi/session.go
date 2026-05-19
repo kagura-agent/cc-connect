@@ -316,7 +316,17 @@ func (ks *kimiSession) handleEvent(raw map[string]any) {
 }
 
 func (ks *kimiSession) handleAssistant(raw map[string]any) {
-	content, _ := raw["content"].([]any)
+	// Kimi CLI may emit content as a plain string (simple responses) or as an
+	// array of typed blocks (structured responses with think/text/etc.).
+	var content []any
+	switch v := raw["content"].(type) {
+	case []any:
+		content = v
+	case string:
+		if v != "" {
+			ks.pendingMsgs = append(ks.pendingMsgs, v)
+		}
+	}
 	for _, item := range content {
 		block, ok := item.(map[string]any)
 		if !ok {
@@ -372,7 +382,25 @@ func (ks *kimiSession) handleAssistant(raw map[string]any) {
 
 func (ks *kimiSession) handleTool(raw map[string]any) {
 	toolCallID, _ := raw["tool_call_id"].(string)
-	content, _ := raw["content"].([]any)
+	var content []any
+	switch v := raw["content"].(type) {
+	case []any:
+		content = v
+	case string:
+		if v != "" {
+			slog.Debug("kimiSession: tool result", "tool_call_id", toolCallID)
+			evt := core.Event{
+				Type:       core.EventToolResult,
+				ToolName:   toolCallID,
+				ToolResult: truncate(strings.TrimSpace(v), 500),
+			}
+			select {
+			case ks.events <- evt:
+			case <-ks.ctx.Done():
+			}
+			return
+		}
+	}
 	var outputParts []string
 	for _, item := range content {
 		block, ok := item.(map[string]any)

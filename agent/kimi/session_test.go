@@ -56,6 +56,21 @@ func TestHandleAssistantWithText(t *testing.T) {
 	assert.Equal(t, "Hello!", ks.pendingMsgs[0])
 }
 
+func TestHandleAssistantWithStringContent(t *testing.T) {
+	ctx := context.Background()
+	ks, _ := newKimiSession(ctx, "kimi", "/tmp", "", "default", "", nil, 0)
+	defer ks.Close()
+
+	// Kimi CLI can emit content as a plain string instead of an array.
+	ks.handleEvent(map[string]any{
+		"role":    "assistant",
+		"content": "你好！有什么我可以帮你的吗？",
+	})
+
+	assert.Len(t, ks.pendingMsgs, 1)
+	assert.Equal(t, "你好！有什么我可以帮你的吗？", ks.pendingMsgs[0])
+}
+
 func TestHandleAssistantWithThink(t *testing.T) {
 	ctx := context.Background()
 	ks, _ := newKimiSession(ctx, "kimi", "/tmp", "", "default", "", nil, 0)
@@ -125,6 +140,25 @@ func TestHandleTool(t *testing.T) {
 	assert.Equal(t, core.EventToolResult, events[0].Type)
 	assert.Equal(t, "tool_abc", events[0].ToolName)
 	assert.Contains(t, events[0].ToolResult, "hello")
+}
+
+func TestHandleToolWithStringContent(t *testing.T) {
+	ctx := context.Background()
+	ks, _ := newKimiSession(ctx, "kimi", "/tmp", "", "default", "", nil, 0)
+	defer ks.Close()
+
+	// Kimi CLI can emit tool content as a plain string.
+	ks.handleEvent(map[string]any{
+		"role":         "tool",
+		"tool_call_id": "tool_xyz",
+		"content":      "command output here",
+	})
+
+	events := drainEvents(ks.events, 1)
+	require.Len(t, events, 1)
+	assert.Equal(t, core.EventToolResult, events[0].Type)
+	assert.Equal(t, "tool_xyz", events[0].ToolName)
+	assert.Equal(t, "command output here", events[0].ToolResult)
 }
 
 func TestFlushPendingAsText(t *testing.T) {
